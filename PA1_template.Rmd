@@ -1,0 +1,333 @@
+---
+title: Reproducable Research - John Hopkins Data Scientist Certification - Program
+  assignment 1
+author: "Ron Collins"
+date: "Sunday, January 18,2015"
+output: pdf_document
+---
+> what is this
+
+
+1. Loading libraries necessary for R
+```{r}
+require("knitr")
+require("ggplot2")
+require("plyr")
+require("dplyr")
+require("RCurl")
+require("grid")
+require("gridExtra")
+```
+
+2. Input data for anslysis
+    * Create temp file
+    * assign URL to download from
+    * Download zip file into temp file
+    * unzip downloaded file
+    * unlink temp file
+
+```{r}
+echo = TRUE
+temp <- tempfile()
+URL <- "http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip" 
+download.file(URL,temp)
+proj1_unzip <- unzip(temp)
+unlink(temp)
+
+```
+3. Read zip file
+```{r}
+echo = TRUE
+PG1_data <- read.table(proj1_unzip, header = TRUE, sep = ",")
+```
+
+
+For this part of the assignment, you can ignore the missing values in the dataset.
+
+4. Make a histogram of the total number of steps taken each day
+    *Clean up dataframe by removing missing values
+```{r}
+#clean up data set for missing values
+na_vector <- !is.na(PG1_data$steps)
+PG1_data_clean <- PG1_data[na_vector,]
+```
+    * calculating the total number of steps for each day
+    
+```{r}
+
+# Change PG1_data_clean$date to factor for analysis
+PG1_data_clean$date <- as.factor(PG1_data_clean$date)
+
+# Caculate the total steps taken for each date
+total_steps <- summarise(group_by(PG1_data_clean, date),sum=sum(steps))
+
+# Convert PG1_data_clean$date from factor back to date
+PG1_data_clean$date <- as.Date(PG1_data_clean$date)
+
+```
+
+    * plotting bar plot using ggplot2 for total number of steps each day
+    
+```{r}
+
+t_s <- ggplot(data=total_steps, aes(x=date, y=sum, fill=time)) + 
+    geom_bar(colour="black", fill="black", width=.7, stat="identity") + 
+    guides(fill=FALSE) +
+    xlab("Date") + ylab("Total Number of Steps") +
+    ggtitle("Total steps per day")
+
+t_s +  theme(axis.title.x = element_text(face="bold", colour="black", size=12),
+            axis.text.x  = element_text(angle=90, vjust=0.5, size=10)) 
+
+
+```
+
+   5. Calculate and report the mean and median number of steps for each day
+    
+```{r}
+# Change PG1_data_clean$interval to factor for analysis
+PG1_data_clean$date <- as.factor(PG1_data_clean$date)
+avg_median_steps_day <- summarise(group_by(PG1_data_clean, date), avg =mean(steps), med = median(steps))
+avg_median_steps_day$date <- as.Date(avg_median_steps_day$date)
+``` 
+    
+
+   6. What is the average daily activity pattern?
+        * Open graphics device for windows
+        * ggplot bar plot average number of steps per day
+        * scale_x_date(format = "%b-%Y") +
+        scale_x_date(breaks =NULL,labels = date_format("%d-%b")) +
+    
+```{r}
+library(scales) # load scales
+
+t_s <- ggplot(data=avg_median_steps_day, aes(x=date, y=avg, fill=time)) + 
+    geom_bar(colour="black", fill="black", width=.7, stat="identity") +      
+    guides(fill=FALSE) + 
+    xlab("Date") + ylab("Average Number of Steps") + 
+    ggtitle("Average number of steps per day")
+
+t_s +  theme(axis.title.x = element_text(face="bold", colour="black", size=12),
+            axis.text.x  = element_text(angle=90, vjust=0.5, size=10)) 
+
+```
+
+    7. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, 
+       averaged across all days (y-axis)
+       * calculate average number of steps taken per 5 minute interval
+       * make time series plot
+       
+        
+```{r}
+
+# convert PG1_data_clean$interval to factor for summarising
+PG1_data_clean$interval <- as.factor(PG1_data_clean$interval)
+
+
+# calculate avg number of steps per sampling interval using summarise function    
+avg_median_steps_interval<- summarise(group_by(PG1_data_clean, interval), avg =mean(steps), med = median(steps))
+avg_median_steps_interval$interval <- as.numeric(avg_median_steps_interval$interval)
+
+# make time series plott using ggplot2
+
+ggplot(avg_median_steps_interval, aes(interval, avg)) + geom_line() +
+  xlab("Intervals") + ylab("Average Steps") +  ggtitle("Time series plot of the average number of steps over 5 minute intervals")
+
+
+```
+
+   8.  Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+        *
+```{r}
+max_no_steps <-    max(avg_median_steps_interval$avg)
+for (i in 1 : length(avg_median_steps_interval$avg)) {   
+    if(avg_median_steps_interval[i,2] == max_no_steps) max_avg_step_interval <- i
+}
+output_txt <- paste0(" The maximum average step occured during the ", max_avg_step_interval, "the time interval.")
+print(output_txt)
+ 
+```
+
+Imputing missing values
+
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+
+9. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+    
+```{r}
+na_vector <- is.na(PG1_data$steps)
+na_number <- sum(na_vector)
+na_txt <- paste0(" The number of missing observations in the dataset with steps per interval on days is ", na_number, ".")
+print(na_txt)
+
+```
+
+10. Correct for missing data
+    * Fill in all of the missing values in the dataset by calculating the mean for the 5-minute intervals and
+        substutinting for the missing values.
+        
+    * Create a new dataset that is equal to the original dataset but with the missing data filled in.
+        
+```{r}
+PG1_data$interval <- as.factor(PG1_data$interval)
+avg_steps <- summarise(group_by(PG1_data, interval), avg =mean(steps, na.rm=TRUE))
+interval_avg <- data.frame(interval=integer(288), avg = integer(288))
+interval_avg$interval <- avg_steps$interval
+interval_avg$avg <- avg_steps$avg
+interval_avg$avg <- as.integer(avg_steps$avg)
+# convert interval_avg$interval from factor to numeric
+interval_avg$interval <- as.numeric(interval_avg$interval)
+
+
+
+PG1_data_comp <- PG1_data
+
+# convert date and interval from factor to date and numberic
+PG1_data_comp$date <- as.Date(PG1_data_comp$date)
+PG1_data_comp$interval <- as.numeric(PG1_data_comp$interval)
+
+# Substitute calcualted average value for missing step values
+for(j in 1:length(PG1_data_comp$date)) {
+    if(is.na(PG1_data_comp[j,1])) {
+        raw_interval <- PG1_data_comp[j,3]
+        for(k in 1:288){
+         if(raw_interval == interval_avg[k,1])  {
+             PG1_data_comp[j,1] <- interval_avg[k,2]
+         } 
+        }
+    }
+}
+na_vector <- is.na(PG1_data_comp$steps)
+na_number <- sum(na_vector)
+na_txt <- paste0(" The number of observations in the dataset with NA step value, after manipulation of data set, per interval on days is ", na_number, ".")
+print(na_txt)
+
+```
+   
+11. Calculate and report the mean and median total number of  steps taken per day for the corrected data.  
+    * What is the impact of imputing missing data on the estimates of the total daily number of steps?
+    
+
+        
+```{r}
+# calcualate the total, mean and median for data set with missing values replaced
+total_steps_corr <- summarise(group_by(PG1_data_comp, date),sum=sum(steps), avg =mean(steps), med = median(steps))
+# print out dataframe of results
+
+```
+
+12. Do these values differ from the estimates from the first part of the assignment? 
+* Cleaned dataframe is total_steps.   dataframe with average replacing missing value is total_steps_corr.
+```{r}
+print("The value of the estimates differ from the first assignment when comparing the number of dates.") 
+print (" There are 53 dates present in the cleaned dataframe and 61 dates presented in the corrected dataframs.")
+
+
+# ttest to compare means of steps taken
+t.test(total_steps$sum, total_steps_corr$sum) 
+
+print("There are no differences between the means of the corrected and cleaned dataframe")
+
+```
+
+
+13. Make a histogram of the total number of steps taken each day and . 
+```{r}
+# Produce bar plot for total steps taken each day during study
+
+t_s <- ggplot(data=total_steps_corr, aes(x=date, y=sum, fill=time)) + 
+    geom_bar(colour="black", fill="black", width=.7, stat="identity") + 
+    guides(fill=FALSE) +
+    xlab("Date") + ylab("Total Number of Steps") +
+    ggtitle("Total steps per day")
+
+t_s +  theme(axis.title.x = element_text(face="bold", colour="black", size=12),
+            axis.text.x  = element_text(angle=90, vjust=0.5, size=10)) 
+
+
+```
+
+
+
+14. Are there differences in activity patterns between weekdays and weekends?
+
+    *For this part the weekdays() function may be of some help here. Use the dataset with the filled-in missing values 
+        for this part.
+
+   * Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given 
+    date is a weekday or weekend day.
+    ```{r}
+# Create new dataframe with day of week and weekday or weekend.
+day_of_week <- total_steps_corr
+weekday <- total_steps_corr$date
+dayType <- total_steps_corr$date
+day_of_week <- cbind(day_of_week,weekday)
+day_of_week <- cbind(day_of_week,dayType)
+day_of_week$dayType <- as.character(day_of_week$dayType)
+#convert factors class to native class
+day_of_week$date <- as.Date(day_of_week$date)
+day_of_week$weekday <- as.character(day_of_week$weekday)
+day_of_week$dayType <- as.integer(day_of_week$dayType)
+week_day_types <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+week_end_types <- c("Saturday", "Sunday")
+
+# Loop to convert date to Weedday or weekend
+for (k in 1:length(day_of_week$date)){
+    day_of_week[k,5] <- weekdays(day_of_week[k,1])
+    for (j in 1:5){
+       if(day_of_week[k,5]== week_day_types[j]) day_of_week[k,6]<-"Weekday"
+    }
+    for(l in 1:2){
+        if(day_of_week[k,5]==week_end_types[l])day_of_week[k,6] <- "weekend"
+    }
+}
+
+# Use general linear model to compare steps between weekend and weekday steps
+# comvert dayType from character to factor for analysis
+# Analysis for average number of steps
+day_of_week$dayType <-as.factor(day_of_week$dayType)
+fit_avg_steps <- glm(day_of_week$avg~day_of_week$dayType)
+summary(fit_avg_steps)
+
+# Analysis for total steps
+fit_total_steps <- glm(day_of_week$sum~day_of_week$dayType)
+summary(fit_total_steps)
+```
+
+    The number of average and total number of steps for weekend and weekday are not statistically different at a 0.05 and 0.01 level.  The weekend and weekday are statistically different at the 0.1 level.
+    
+
+15. Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average
+    number of steps taken, averaged across all weekday days or weekend days (y-axis). The plot should look something 
+    like the following, which was creating using simulated data:
+
+    *Your plot will look different from the one above because you will be using the activity monitor data. Note that
+    the above plot was made using the lattice system but you can make the same version of the plot using any plotting 
+    system you choose.
+    ```{r}V  
+# time series of average steps taken for each time series interval
+plot_1 <- ggplot(avg_median_steps_interval, aes(interval, avg)) + geom_line() +
+        xlab("Intervals") + ylab("Average Steps") +  ggtitle("Time series plot of the average number of  
+        steps over 5 minute intervals")
+plot_1
+
+# Plot average number of steps across all weedend days(y- axis)
+# Calculate the average number of steps by weekday and weekend.
+day_of_week$dayType <- as.factor(day_of_week$dayType)
+average_steps_dayType <- summarise(group_by(day_of_week, dayType),avg=mean(avg))
+# convert dayType from factor to character
+average_steps_dayType$dayType <-as.character(average_steps_dayType$dayType)
+
+            
+plot_2 <- qplot(factor(dayType), data=average_steps_dayType, geom="bar", fill=factor(avg)) 
+
+plot_2 <- ggplot(data=average_steps_dayType, aes(x=dayType, y=avg)) + geom_bar(colour="black", stat="identity") + ggtitle("Average number of steps for Weekday and weekend") + xlab("Day of Week") + ylab("Average Steps") 
+        
+plot_2
+
+# Plot both plots on one graph
+library(grid)
+library(gridExtra)
+grid.arrange(plot_1, plot_2, ncol=1, main = "Two graphs Combined onto one page" )
+```
+    
